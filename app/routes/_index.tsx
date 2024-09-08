@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { LoaderFunction, json } from "@remix-run/node";
-import { useLoaderData, useSearchParams } from "@remix-run/react";
+import { useLoaderData, useNavigation, useSearchParams } from "@remix-run/react";
 import type { MetaFunction } from "@remix-run/node";
 
 export const meta: MetaFunction = () => {
@@ -19,16 +19,16 @@ type WeatherData = {
     pressure: number;
     humidity: number;
     wind_speed: number;
-    weather: Array<{ description: string }>;
+    weather: Array<{ description: string, icon: string }>;
     sunrise: number;
     sunset: number;
   };
   daily: Array<{
     dt: number;
     temp: { min: number; max: number };
-    weather: Array<{ description: string }>;
+    weather: Array<{ description: string, icon: string }>;
   }>;
-};
+} | { error: string };
 
 export const loader: LoaderFunction = async ({ request }) => {
   const url = new URL(request.url);
@@ -75,6 +75,7 @@ export const loader: LoaderFunction = async ({ request }) => {
 
 export default function Index() {
   const [, setSearchParams] = useSearchParams();
+  const navigation = useNavigation();
   const weatherData = useLoaderData<WeatherData>();
   const [zipCode, setZipCode] = useState("10001");
   const [showExtra, setShowExtra] = useState(false);
@@ -87,6 +88,22 @@ export default function Index() {
       preventScrollReset: true,
     });
   };
+
+  if ('error' in weatherData) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <p className="text-red-500">{weatherData.error}</p>
+      </div>
+    );
+  }
+
+  if (navigation.state === "loading") {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <div className="animate-spin rounded-full h-32 w-32 border-t-2 border-b-2 border-blue-500"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="font-sans p-4 max-w-3xl mx-auto">
@@ -112,7 +129,14 @@ export default function Index() {
       {/* Current conditions */}
       <div className="bg-gray-100 p-4 rounded-lg mb-4">
         <h2 className="text-2xl mb-2">{weatherData.location}</h2>
-        <p>{weatherData.current.weather[0].description}</p>
+        <div className="flex items-center mb-2">
+          <img
+            src={`https://openweathermap.org/img/wn/${weatherData.current.weather[0].icon}@2x.png`}
+            alt={weatherData.current.weather[0].description}
+            className="w-12 h-12 mr-2"
+          />
+          <p className="capitalize text-lg">{weatherData.current.weather[0].description}</p>
+        </div>
         <p>Current: {Math.round(weatherData.current.temp)}°F</p>
         <p>Feels like: {Math.round(weatherData.current.feels_like)}°F</p>
         <p>High: {Math.round(weatherData.daily[0].temp.max)}°F</p>
@@ -138,14 +162,28 @@ export default function Index() {
 
       {/* 7-day forecast */}
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-        {weatherData.daily.slice(0, 7).map((day, index) => (
-          <div key={index} className="bg-gray-100 p-4 rounded-lg">
-            <p className="font-bold">{new Date(day.dt * 1000).toLocaleDateString()}</p>
-            <p>{day.weather[0].description}</p>
-            <p>High: {Math.round(day.temp.max)}°F</p>
-            <p>Low: {Math.round(day.temp.min)}°F</p>
-          </div>
-        ))}
+        {weatherData.daily.map((day, index) => {
+          const date = new Date(day.dt * 1000);
+          const dayOfWeek = date.toLocaleDateString('en-US', { weekday: 'short' });
+          const dateString = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+          const displayDate = index === 0 ? 'Today' : index === 1 ? 'Tomorrow' : `${dayOfWeek}, ${dateString}`;
+          
+          return (
+            <div key={index} className="bg-gray-100 p-4 rounded-lg">
+              <p className="font-bold">{displayDate}</p>
+              <div className="flex items-center mt-2">
+                <img
+                  src={`https://openweathermap.org/img/wn/${day.weather[0].icon}.png`}
+                  alt={day.weather[0].description}
+                  className="w-8 h-8 mr-2"
+                />
+                <p className="capitalize text-sm">{day.weather[0].description}</p>
+              </div>
+              <p>High: {Math.round(day.temp.max)}°F</p>
+              <p>Low: {Math.round(day.temp.min)}°F</p>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
